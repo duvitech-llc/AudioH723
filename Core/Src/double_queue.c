@@ -31,8 +31,8 @@ void dq_insertFirst(dq_queue_t* pQueue, size_t data, size_t size)
 
 	if (link != NULL)
 	{
-		link->data = data;
-		link->data_len = size;
+		link->d0 = data;
+		link->d1 = size;
 		link->prev = NULL;
 		link->next = NULL;
 
@@ -69,8 +69,8 @@ void dq_insertLast(dq_queue_t* pQueue, size_t data, size_t size)
 	struct dq_node_t* link = (struct dq_node_t*)malloc(sizeof(struct dq_node_t));
 	if (link != NULL)
 	{
-		link->data = data;
-		link->data_len = size;
+		link->d0 = data;
+		link->d1 = size;
 		link->prev = NULL;
 		link->next = NULL;
 

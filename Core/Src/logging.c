@@ -69,14 +69,14 @@ void processUartTxData(){
 		struct dq_node_t* temp = dq_deleteFirst(&logging_queue);
 		if(temp != NULL){
 			bPrintfTransferComplete = false;
-			memcpy(tx_buffer,(uint8_t*)temp->data, temp->data_len);
-			uint16_t size = (uint16_t)temp->data_len;
+			memcpy(tx_buffer,(uint8_t*)temp->d0, temp->d1);
+			uint16_t size = (uint16_t)temp->d1;
 			HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit_DMA(&huart3, tx_buffer, size);
 			if(com_tx_status != HAL_OK)
 			{
 				Error_Handler();
 			}
-			free((uint8_t*)temp->data);
+			free((uint8_t*)temp->d0);
 			free(temp);
 		}
 	}

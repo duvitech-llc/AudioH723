@@ -27,6 +27,14 @@
 #include <math.h>
 
 #include "logging.h"
+#include "double_queue.h"
+
+//#define PASS_THRU_ENABLED
+
+#define DAC_SEPERATION 256U		// 10ms = 256
+#define  TKS_M0 0U;				// pre start samples
+#define  TKE_M1 0U;				// post end samples
+#define  TKE_K 0U;				// samples in between ticks that constitute a cluster tick
 
 /* USER CODE END Includes */
 
@@ -58,7 +66,20 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
+
+uint16_t rx_buf[2];
+uint16_t tx_buf[2];
+
+volatile bool dac_enabled;
+
+dq_queue_t audio_queue;
+
 volatile unsigned int sample_count = 0;
+volatile bool dac_enabled;
+
+uint32_t left_blanker_active = 0;
+uint32_t right_blanker_active = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -131,9 +152,21 @@ int main(void)
   printf("DUVITECH Copyright 2022\r\n");
   printf("AUDIO Processing Demo Shield v1.0\r\n\r\n");
 
-  HAL_Delay(1000);
+  // initialize
+  dq_init(&audio_queue, DAC_SEPERATION + 64U);
 
-  HAL_TIM_Base_Start_IT(&htim16);
+
+  ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
+
+  if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
+	Error_Handler();
+  }
+
+  if (HAL_OK != HAL_SAI_Receive_DMA(&hsai_BlockA1, (uint8_t*) rx_buf, 2)) {
+	Error_Handler();
+  }
+
+  ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin; // set pin callback timing signal
 
   /* USER CODE END 2 */
 
@@ -609,7 +642,62 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
 
+}
+
+void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
+
+	((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin; // set pin callback timing signal
+
+#ifdef PASS_THRU_ENABLED
+
+	tx_buf[0] = rx_buf[0];
+	tx_buf[1] = rx_buf[1];
+
+#else
+
+	// get blanker state
+	left_blanker_active = (((GPIO_TypeDef*) BLANKER_L_GPIO_Port)->IDR & BLANKER_L_Pin);
+	right_blanker_active = (((GPIO_TypeDef*) BLANKER_R_GPIO_Port)->IDR & BLANKER_R_Pin);
+
+	// process input data
+	dq_insertFirst(&audio_queue, (rx_buf[0] << 16) | ( rx_buf[1] & 0xffff), 0);
+
+	// if dac enabled process output data
+	if (dac_enabled) {
+		struct dq_node_t* temp = dq_deleteLast(&audio_queue);
+		if(temp != NULL)
+		{
+		  if(temp->d1)
+		  {
+
+		  }
+		  else
+		  {
+	        tx_buf[0] = (uint16_t) ((temp->d0 >> 16) & 0xffff);
+		    tx_buf[1] = (uint16_t)(temp->d0 & 0xffff);
+		  }
+
+		  free(temp);
+	    }
+		else
+		{
+			printf("Failed to DEQUEU DATA\r\n");
+		}
+	}else{
+		if (sample_count >= DAC_SEPERATION - 1) {
+			dac_enabled = true;
+			((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
+		}
+	}
+#endif
+
+	sample_count++;
+
+	((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
+
+}
 
 /* USER CODE END 4 */
 
@@ -659,21 +747,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-  if (htim == &htim16 )
-  {
-	sample_count++;
-	if(sample_count % 2 == 0){
-		((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;
-	}else{
-		((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U;
-	}
-	printf("0x%08x\r\n", sample_count);
 
-
-	if(sample_count % 100 == 0){
-		print_stats();
-	}
-  }
   /* USER CODE END Callback 1 */
 }
 

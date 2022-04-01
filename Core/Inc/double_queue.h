@@ -14,8 +14,8 @@ extern "C" {
 #include <stdint.h>
 
     struct dq_node_t {
-        size_t data;
-        size_t data_len;
+        size_t d0;
+        size_t d1;
         struct dq_node_t* next;
         struct dq_node_t* prev;
     };
