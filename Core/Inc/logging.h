@@ -6,6 +6,16 @@
  extern "C" {
 #endif
 
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+ void init_dma_logging();
+ bool isInitialized();
+ void processUartTxData();
+ void print_stats();
 
 #ifdef __cplusplus
 }
