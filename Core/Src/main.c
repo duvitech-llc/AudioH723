@@ -29,12 +29,9 @@
 #include "logging.h"
 #include "double_queue.h"
 
-//#define PASS_THRU_ENABLED
+#include "audio_dsp.h"
 
-#define DAC_SEPERATION 256U		// 10ms = 256
-#define  TKS_M0 0U;				// pre start samples
-#define  TKE_M1 0U;				// post end samples
-#define  TKE_K 0U;				// samples in between ticks that constitute a cluster tick
+//#define PASS_THRU_ENABLED
 
 /* USER CODE END Includes */
 
@@ -80,6 +77,16 @@ volatile bool dac_enabled;
 uint32_t left_blanker_active = 0;
 uint32_t right_blanker_active = 0;
 
+enum enumAlgoState left_adc_state = NORMAL_OPERATION;
+enum enumAlgoState right_adc_state = NORMAL_OPERATION;
+enum enumAlgoState left_dac_state = NORMAL_OPERATION;
+enum enumAlgoState right_dac_state = NORMAL_OPERATION;
+
+blank_t *pADC_left_blanker = NULL;
+blank_t *pADC_right_blanker = NULL;
+blank_t *pDAC_left_blanker = NULL;
+blank_t *pDAC_right_blanker = NULL;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -113,7 +120,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
-  MPU_Config();
+   MPU_Config();
 
   /* Enable I-Cache---------------------------------------------------------*/
   SCB_EnableICache();
@@ -150,13 +157,10 @@ int main(void)
   init_dma_logging();
 
   printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v1.0\r\n\r\n");
+  printf("AUDIO Processing Demo Shield v0.0a\r\n\r\n");
 
   // initialize
-  dq_init(&audio_queue, DAC_SEPERATION + 64U);
-
-
-  ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
+  dq_init(&audio_queue, DAC_SEPARATION + 64U);
 
   if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
 	Error_Handler();
@@ -165,8 +169,6 @@ int main(void)
   if (HAL_OK != HAL_SAI_Receive_DMA(&hsai_BlockA1, (uint8_t*) rx_buf, 2)) {
 	Error_Handler();
   }
-
-  ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin; // set pin callback timing signal
 
   /* USER CODE END 2 */
 
@@ -656,39 +658,89 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 	tx_buf[1] = rx_buf[1];
 
 #else
-
+	tx_buf[0] = 0;
+	tx_buf[1] = 0;
 	// get blanker state
 	left_blanker_active = (((GPIO_TypeDef*) BLANKER_L_GPIO_Port)->IDR & BLANKER_L_Pin);
 	right_blanker_active = (((GPIO_TypeDef*) BLANKER_R_GPIO_Port)->IDR & BLANKER_R_Pin);
 
-	// process input data
-	dq_insertFirst(&audio_queue, (rx_buf[0] << 16) | ( rx_buf[1] & 0xffff), 0);
+	// set blanker LED
+	if(left_blanker_active>0)
+		((GPIO_TypeDef*) LED_L_GPIO_Port)->BSRR = LED_L_Pin;
+	else
+		((GPIO_TypeDef*) LED_L_GPIO_Port)->BSRR = (uint32_t) LED_L_Pin << 16U;
+
+	if(right_blanker_active>0)
+		((GPIO_TypeDef*) LED_R_GPIO_Port)->BSRR = LED_R_Pin;
+	else
+		((GPIO_TypeDef*) LED_R_GPIO_Port)->BSRR = (uint32_t) LED_R_Pin << 16U;
+
+	// process adc data
+	struct dq_node_t* audio_node = dq_createNode();
+
+	audio_node->d0 = process_adc_channel(left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker);
+	audio_node->d2 = (size_t)pADC_left_blanker;
+	if(pADC_left_blanker->blank_state == BLANKING_COMPLETE)
+		pADC_left_blanker = NULL;
+
+	audio_node->d1 = process_adc_channel(right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker);
+	audio_node->d3 = (size_t)pADC_right_blanker;
+	if(pADC_right_blanker->blank_state == BLANKING_COMPLETE)
+		pADC_right_blanker = NULL;
+
+	dq_insertFirst(&audio_queue, audio_node);
 
 	// if dac enabled process output data
 	if (dac_enabled) {
 		struct dq_node_t* temp = dq_deleteLast(&audio_queue);
-		if(temp != NULL)
-		{
-		  if(temp->d1)
-		  {
 
-		  }
-		  else
-		  {
-	        tx_buf[0] = (uint16_t) ((temp->d0 >> 16) & 0xffff);
-		    tx_buf[1] = (uint16_t)(temp->d0 & 0xffff);
-		  }
-
-		  free(temp);
-	    }
-		else
+		if(temp)
 		{
-			printf("Failed to DEQUEU DATA\r\n");
+
+			if(temp->d2){
+				pDAC_left_blanker = (blank_t*)temp->d2;
+				if(pDAC_left_blanker->correct_state == CORRECTING_START){
+					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;
+				}
+
+			}
+
+			if(temp->d3){
+				pDAC_right_blanker = (blank_t*)temp->d3;
+				if(pDAC_right_blanker->correct_state == CORRECTING_START){
+					((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin;
+				}
+			}
+
+			tx_buf[0] = process_dac_channel(&left_dac_state, (uint16_t)(temp->d0 & 0xffff), &pDAC_left_blanker);
+			tx_buf[1] = process_dac_channel(&right_dac_state, (uint16_t)(temp->d1 & 0xffff), &pDAC_right_blanker);
+
+			if(pDAC_left_blanker){
+				if(pDAC_left_blanker->correct_state == CORRECTING_COMPLETE)
+				{
+					free(pDAC_left_blanker);
+					pDAC_left_blanker = NULL;
+					// reset led
+					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U;
+				}
+			}
+
+			if(pDAC_right_blanker){
+				if(pDAC_right_blanker->correct_state == CORRECTING_COMPLETE)
+				{
+					free(pDAC_right_blanker);
+					pDAC_right_blanker = NULL;
+					// reset led
+					((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U;
+				}
+			}
+
+			free(temp);
 		}
+
 	}else{
-		if (sample_count >= DAC_SEPERATION - 1) {
+		if (sample_count >= DAC_SEPARATION - 1) {
 			dac_enabled = true;
-			((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
 		}
 	}
 #endif

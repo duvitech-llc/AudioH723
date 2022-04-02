@@ -18,7 +18,15 @@ int dq_length(dq_queue_t* pQueue) {
 	return pQueue->count;
 }
 
-void dq_insertFirst(dq_queue_t* pQueue, size_t data, size_t size)
+
+struct dq_node_t* dq_createNode()
+{
+	struct dq_node_t* node = (struct dq_node_t*)malloc(sizeof(struct dq_node_t));
+	return node;
+
+}
+
+void dq_insertFirst(dq_queue_t* pQueue, struct dq_node_t* node)
 {
 	if (pQueue->count >= pQueue->max)
 	{
@@ -26,30 +34,25 @@ void dq_insertFirst(dq_queue_t* pQueue, size_t data, size_t size)
 		return;
 	}
 
-	//create a link
-	struct dq_node_t* link = (struct dq_node_t*)malloc(sizeof(struct dq_node_t));
-
-	if (link != NULL)
+	if (node != NULL)
 	{
-		link->d0 = data;
-		link->d1 = size;
-		link->prev = NULL;
-		link->next = NULL;
+		node->prev = NULL;
+		node->next = NULL;
 
 		if (dq_isEmpty(pQueue)) {
 			//make it the last link
-			pQueue->last = link;
+			pQueue->last = node;
 		}
 		else {
 			//update first prev link
-			pQueue->head->prev = link;
+			pQueue->head->prev = node;
 		}
 
 		//point it to old first link
-		link->next = pQueue->head;
+		node->next = pQueue->head;
 
 		//point first to new first link
-		pQueue->head = link;
+		pQueue->head = node;
 		pQueue->count++;
 	}
 	else {
@@ -57,7 +60,7 @@ void dq_insertFirst(dq_queue_t* pQueue, size_t data, size_t size)
 	}
 }
 
-void dq_insertLast(dq_queue_t* pQueue, size_t data, size_t size)
+void dq_insertLast(dq_queue_t* pQueue, struct dq_node_t* node)
 {
 	if (pQueue->count >= pQueue->max)
 	{
@@ -65,35 +68,38 @@ void dq_insertLast(dq_queue_t* pQueue, size_t data, size_t size)
 		return;
 	}
 
-	//create a link
-	struct dq_node_t* link = (struct dq_node_t*)malloc(sizeof(struct dq_node_t));
-	if (link != NULL)
+	if (node != NULL)
 	{
-		link->d0 = data;
-		link->d1 = size;
-		link->prev = NULL;
-		link->next = NULL;
+		node->prev = NULL;
+		node->next = NULL;
 
 		if (dq_isEmpty(pQueue)) {
 			//point first to new first link
-			pQueue->head = link;
+			pQueue->head = node;
 		}
 		else {
 			//make link a new last link
-			pQueue->last->next = link;
+			pQueue->last->next = node;
 
 			//mark old last node as prev of new link
-			link->prev = pQueue->last;
+			node->prev = pQueue->last;
 
 		}
 
 		//point last to new last node
-		pQueue->last = link;
+		pQueue->last = node;
 		pQueue->count++;
 	}
 	else {
 		printf("dq_insertLast Error\r\n");
 	}
+}
+
+struct dq_node_t* dq_peekFirst(dq_queue_t* pQueue)
+{
+	//save reference to first link
+	struct dq_node_t* tempLink = pQueue->head;
+	return tempLink;
 }
 
 struct dq_node_t* dq_deleteFirst(dq_queue_t* pQueue)
@@ -112,6 +118,13 @@ struct dq_node_t* dq_deleteFirst(dq_queue_t* pQueue)
 	pQueue->head = pQueue->head->next;
 	pQueue->count--;
 	//return the deleted link
+	return tempLink;
+}
+
+struct dq_node_t* dq_peekLast(dq_queue_t* pQueue)
+{
+	//save reference to last link
+	struct dq_node_t* tempLink = pQueue->last;
 	return tempLink;
 }
 

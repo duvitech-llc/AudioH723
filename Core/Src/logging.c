@@ -27,7 +27,10 @@ int _write(int fd, const void *buf, size_t count){
 	if(bInit){
 		char *msg = (char*) malloc(count);
 		memcpy(msg, buf, count);
-		dq_insertLast(&logging_queue, (uint32_t)msg, count);
+		struct dq_node_t* msg_node = dq_createNode();
+		msg_node->d0 = (uint32_t)msg;
+		msg_node->d1 = count;
+		dq_insertLast(&logging_queue, msg_node);
 	}else{
 		uint8_t * src = (uint8_t *)buf;
 		// HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit(&huart3, src, count, 5);
