@@ -2,7 +2,7 @@
 #include "audio_dsp.h"
 #include "double_queue.h"
 
-uint32_t blanking_samples = 0;
+uint32_t seperation_samples = TKE_K;
 
 uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue)
 {
@@ -20,8 +20,13 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 				printf("<<<<<<<<<<<< NORMAL OPERATION CURRENT Blanker POINTER NOT NULL <<<<<<<<<<<< \r\n");
 			}
 
+			// printf("TKE: %i CNT: %i\r\n", TKE_K, seperation_samples);
+			if(seperation_samples < TKE_K){
+				bClusterTick = true;
+			}
+
 			// Check M0 and fix up samples
-			if(TKS_M0 > 0){
+			if(!bClusterTick && TKS_M0 > 0){
 				// get blanker
 				struct dq_node_t* temp_blnk = dq_peekFirst((dq_queue_t*)pAudqueue);
 				if (temp_blnk) {
@@ -40,7 +45,7 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 					if(*pADC_blanker == NULL){
 						// create blanker
 						(*pADC_blanker) = (blank_t*) malloc(sizeof(blank_t));
-						(*pADC_blanker)->tks_val = ch_id == 0?(uint16_t)(((struct dq_node_t*)temp_blnk)->d0): (uint16_t)(((struct dq_node_t*)temp_blnk)->d1);
+						(*pADC_blanker)->tks_val = ch_id == 0?(uint16_t)(temp_blnk->d0): (uint16_t)(temp_blnk->d1);
 						(*pADC_blanker)->tks_cnt = mv_cnt;
 						(*pADC_blanker)->cr_cnt = 0;
 						(*pADC_blanker)->blank_state = BLANKING_START;
@@ -55,19 +60,68 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 					{
 						if(ch_id == 0)
 						{
-							((struct dq_node_t*)temp_blnk)->d0 = (*pADC_blanker)->tks_val;
-							((struct dq_node_t*)temp_blnk)->d2 = (size_t)(*pADC_blanker);
+							temp_blnk->d0 = (*pADC_blanker)->tks_val;
+							temp_blnk->d2 = (size_t)(*pADC_blanker);
 						}
 						else
 						{
-							((struct dq_node_t*)temp_blnk)->d1 = (*pADC_blanker)->tks_val;
-							((struct dq_node_t*)temp_blnk)->d3 = (size_t)(*pADC_blanker);
+							temp_blnk->d1 = (*pADC_blanker)->tks_val;
+							temp_blnk->d3 = (size_t)(*pADC_blanker);
 						}
 
 						temp_blnk = temp_blnk->prev;
 					}
 
 				}
+			}else if(bClusterTick){
+				// handle cluster tick
+				int mv_cnt = 0;
+				struct dq_node_t* temp_blnk = dq_peekFirst((dq_queue_t*)pAudqueue);
+				do{
+					(*pADC_blanker) = ch_id == 0? (blank_t*)temp_blnk->d2:(blank_t*)temp_blnk->d3;
+					mv_cnt++;
+
+					if(*pADC_blanker != NULL)
+						break; // found the blanker
+
+					if(temp_blnk->next)
+						temp_blnk = temp_blnk->next;
+					else
+						break; // no more to process
+
+				}while(*pADC_blanker == NULL);
+
+				if(*pADC_blanker == NULL){
+					// no blanker found error
+					printf("No Blanker found\r\n");
+				}else{
+					(*pADC_blanker)->blank_state = BLANKING_START;
+					(*pADC_blanker)->correct_state = CORRECTING_START;
+					(*pADC_blanker)->tks_cnt += mv_cnt;
+					(*pADC_blanker)->cr_cnt = 0;
+
+					// fix up samples in between
+					while (temp_blnk)
+					{
+						if(ch_id == 0)
+						{
+							temp_blnk->d0 = (*pADC_blanker)->tks_val;
+							temp_blnk->d2 = (size_t)(*pADC_blanker);
+						}
+						else
+						{
+							temp_blnk->d1 = (*pADC_blanker)->tks_val;
+							temp_blnk->d3 = (size_t)(*pADC_blanker);
+						}
+
+						temp_blnk = temp_blnk->prev;
+					}
+
+					adc_value = (*pADC_blanker)->tks_val;
+				}
+
+				*adc_state = BLANKING_OPERATION;
+
 			}else{
 
 				// create blanker
@@ -80,12 +134,11 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 
 			}
 
-			blanking_samples = 1;
-
 			adc_value = (*pADC_blanker)->tks_val;
 			*adc_state = BLANKING_OPERATION;
 		} else {
 			// do nothing
+			seperation_samples++;
 		}
 		break;
 	case BLANKING_OPERATION:
@@ -101,7 +154,6 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 			(*pADC_blanker)->tks_cnt++;
 
 			adc_value = (*pADC_blanker)->tks_val; // make all the starting value so we can just add the offset times count to it
-			blanking_samples++;
 		} else {
 			// end blanking operation
 			if ((*pADC_blanker) == NULL) {
@@ -134,6 +186,8 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 			}
 
 			//printf("BLANK C: %i M0: %i M1: %i D: %i S: %i\r\n", (*pADC_blanker)->tks_cnt, (*pADC_blanker)->tks_val, (*pADC_blanker)->tke_val, (*pADC_blanker)->tks_dir, (*pADC_blanker)->tks_step);
+
+			seperation_samples = 0;
 
 			(*pADC_blanker)->blank_state = BLANKING_COMPLETE;
 			*adc_state = NORMAL_OPERATION;

@@ -15,8 +15,8 @@ extern "C" {
 
 #define DAC_SEPARATION 256U		// 10ms = 256
 #define BLANKER_QUEUE_SIZE 64U	// blanker queue size shouldn't be smaller then 1/4 separation
-#define  TKS_M0 4U				// pre start samples
-#define  TKE_K 0U				// samples in between ticks that constitute a cluster tick
+#define  TKS_M0 0U				// pre start samples
+#define  TKE_K 12U				// samples in between ticks that constitute a cluster tick
 
 enum enumAlgoState {
 	NORMAL_OPERATION, BLANKING_OPERATION, CORRECTING_OPERATION, BLANKING_START, BLANKING_COMPLETE, CORRECTING_START, CORRECTING_COMPLETE

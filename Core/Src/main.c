@@ -157,7 +157,7 @@ int main(void)
   init_dma_logging();
 
   printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v0.0c\r\n\r\n");
+  printf("AUDIO Processing Demo Shield v0.0d\r\n\r\n");
 
   // initialize
   dq_init(&audio_queue, DAC_SEPARATION + 64U);
