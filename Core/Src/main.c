@@ -64,8 +64,8 @@ DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
 
-uint16_t rx_buf[2];
-uint16_t tx_buf[2];
+ALIGN_32BYTES(uint16_t rx_buf[2]);
+ALIGN_32BYTES(uint16_t tx_buf[2]);
 
 volatile bool dac_enabled;
 
@@ -157,7 +157,7 @@ int main(void)
   init_dma_logging();
 
   printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v0.0d\r\n\r\n");
+  printf("AUDIO Processing Demo Shield v1.0\r\n\r\n");
 
   // initialize
   dq_init(&audio_queue, DAC_SEPARATION + 64U);
