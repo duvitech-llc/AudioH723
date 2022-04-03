@@ -120,7 +120,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
-   MPU_Config();
+  MPU_Config();
 
   /* Enable I-Cache---------------------------------------------------------*/
   SCB_EnableICache();
@@ -157,7 +157,7 @@ int main(void)
   init_dma_logging();
 
   printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v0.0a\r\n\r\n");
+  printf("AUDIO Processing Demo Shield v0.0c\r\n\r\n");
 
   // initialize
   dq_init(&audio_queue, DAC_SEPARATION + 64U);
@@ -170,6 +170,7 @@ int main(void)
 	Error_Handler();
   }
 
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -344,7 +345,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 6875;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 999;
+  htim1.Init.Period = 99;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV2;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -678,12 +679,12 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 	// process adc data
 	struct dq_node_t* audio_node = dq_createNode();
 
-	audio_node->d0 = process_adc_channel(left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker);
+	audio_node->d0 = process_adc_channel(0, left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
 	audio_node->d2 = (size_t)pADC_left_blanker;
 	if(pADC_left_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_left_blanker = NULL;
 
-	audio_node->d1 = process_adc_channel(right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker);
+	audio_node->d1 = process_adc_channel(1, right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
 	audio_node->d3 = (size_t)pADC_right_blanker;
 	if(pADC_right_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_right_blanker = NULL;
