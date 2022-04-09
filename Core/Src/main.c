@@ -154,16 +154,27 @@ int main(void)
   MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
 
-  init_dma_logging();
+  // init_dma_logging();
+
+  rx_buf[0]=0;
+  rx_buf[1]=0;
+  tx_buf[0]=0;
+  tx_buf[1]=0;
 
   printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v1.0\r\n\r\n");
+  printf("AUDIO Processing Demo Shield v1.1\r\n\r\n");
   printf("AUDIO: %lu Hz 16 bits \r\n", hsai_BlockA1.Init.AudioFrequency);
   printf("M0: %i\r\n", TKS_M0);
   printf("K: %i\r\n", TKE_K);
 
+
+
+  ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
+
   // initialize
-  dq_init(&audio_queue, DAC_SEPARATION + 64U);
+  dq_init(&audio_queue, DAC_SEPARATION + 256U);
+
+  //((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin; // set pin callback timing signal
 
   if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
 	Error_Handler();
@@ -173,7 +184,7 @@ int main(void)
 	Error_Handler();
   }
 
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  // HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -183,7 +194,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  processUartTxData();
+	//  processUartTxData();
   }
   /* USER CODE END 3 */
 }
@@ -743,8 +754,12 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 		}
 
 	}else{
+		tx_buf[0] = 0;
+		tx_buf[1] = 0;
 		if (sample_count >= DAC_SEPARATION - 1) {
 			dac_enabled = true;
+
+			// ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
 		}
 	}
 #endif

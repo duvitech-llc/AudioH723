@@ -33,8 +33,7 @@ int _write(int fd, const void *buf, size_t count){
 		dq_insertLast(&logging_queue, msg_node);
 	}else{
 		uint8_t * src = (uint8_t *)buf;
-		// HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit(&huart3, src, count, 5);
-		HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit_DMA(&huart3, src, count);
+		HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit(&huart3, src, count, 5);
 		if(com_tx_status != HAL_OK)
 		{
 			Error_Handler();

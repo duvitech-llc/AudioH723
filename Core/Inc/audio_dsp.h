@@ -12,7 +12,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-#define DAC_SEPARATION 256U		// 10ms = 256
+#define DAC_SEPARATION 960U		// 10ms
 #define  TKS_M0 5U				// pre start samples
 #define  TKE_K 30U				// samples in between ticks that constitute a cluster tick
 
