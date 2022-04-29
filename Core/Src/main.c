@@ -162,7 +162,7 @@ int main(void)
   tx_buf[1]=0;
 
   printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v1.1\r\n\r\n");
+  printf("AUDIO Processing Demo Shield v1.2\r\n\r\n");
   printf("AUDIO: %lu Hz 16 bits \r\n", hsai_BlockA1.Init.AudioFrequency);
   printf("M0: %i\r\n", TKS_M0);
   printf("K: %i\r\n", TKE_K);
