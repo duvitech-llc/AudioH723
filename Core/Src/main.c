@@ -166,15 +166,12 @@ int main(void)
   printf("AUDIO: %lu Hz 16 bits \r\n", hsai_BlockA1.Init.AudioFrequency);
   printf("M0: %i\r\n", TKS_M0);
   printf("K: %i\r\n", TKE_K);
-
-
-
-  ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
-
   // initialize
   dq_init(&audio_queue, DAC_SEPARATION + 256U);
 
-  //((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin; // set pin callback timing signal
+  HAL_Delay(200);
+
+  ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
 
   if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
 	Error_Handler();
