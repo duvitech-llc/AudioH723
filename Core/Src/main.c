@@ -169,9 +169,12 @@ int main(void)
   // initialize
   dq_init(&audio_queue, DAC_SEPARATION + 256U);
 
+  ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
+  ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
+
   HAL_Delay(200);
 
-  ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
+  ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;  // timing start
 
   if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
 	Error_Handler();
@@ -711,17 +714,21 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 
 			if(temp->d2){
 				pDAC_left_blanker = (blank_t*)temp->d2;
+				/*
 				if(pDAC_left_blanker->correct_state == CORRECTING_START){
 					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;
 				}
+				*/
 
 			}
 
 			if(temp->d3){
 				pDAC_right_blanker = (blank_t*)temp->d3;
+				/*
 				if(pDAC_right_blanker->correct_state == CORRECTING_START){
 					((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin;
 				}
+				*/
 			}
 
 			tx_buf[0] = process_dac_channel(&left_dac_state, (uint16_t)(temp->d0 & 0xffff), &pDAC_left_blanker);
@@ -733,7 +740,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 					free(pDAC_left_blanker);
 					pDAC_left_blanker = NULL;
 					// reset led
-					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U;
+					//((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U;
 				}
 			}
 
@@ -743,7 +750,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 					free(pDAC_right_blanker);
 					pDAC_right_blanker = NULL;
 					// reset led
-					((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U;
+					//((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U;
 				}
 			}
 
@@ -755,8 +762,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 		tx_buf[1] = 0;
 		if (sample_count >= DAC_SEPARATION - 1) {
 			dac_enabled = true;
-
-			// ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
+			((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // timing end
 		}
 	}
 #endif

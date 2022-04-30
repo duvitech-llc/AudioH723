@@ -2,7 +2,8 @@
 #include "audio_dsp.h"
 #include "double_queue.h"
 
-uint32_t seperation_samples = TKE_K;
+uint32_t static left_seperation_samples = TKE_K;
+uint32_t static right_seperation_samples = TKE_K;
 
 uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue)
 {
@@ -20,9 +21,20 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 				printf("<<<<<<<<<<<< NORMAL OPERATION CURRENT Blanker POINTER NOT NULL <<<<<<<<<<<< \r\n");
 			}
 
-			// printf("TKE: %i CNT: %i\r\n", TKE_K, seperation_samples);
-			if(seperation_samples < TKE_K){
-				bClusterTick = true;
+			if(ch_id == 0)
+			{
+				// printf("TKE: %i CNT: %i\r\n", TKE_K, left_seperation_samples);
+				if(left_seperation_samples < TKE_K){
+					bClusterTick = true;
+				}
+			}
+			else
+			{
+				// printf("TKE: %i CNT: %i\r\n", TKE_K, right_seperation_samples);
+				if(right_seperation_samples < TKE_K){
+					bClusterTick = true;
+				}
+
 			}
 
 			// Check M0 and fix up samples
@@ -138,7 +150,14 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 			*adc_state = BLANKING_OPERATION;
 		} else {
 			// do nothing
-			seperation_samples++;
+			if(ch_id == 0)
+			{
+				left_seperation_samples++;
+			}
+			else
+			{
+				right_seperation_samples++;
+			}
 		}
 		break;
 	case BLANKING_OPERATION:
@@ -187,7 +206,14 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 
 			//printf("BLANK C: %i M0: %i M1: %i D: %i S: %i\r\n", (*pADC_blanker)->tks_cnt, (*pADC_blanker)->tks_val, (*pADC_blanker)->tke_val, (*pADC_blanker)->tks_dir, (*pADC_blanker)->tks_step);
 
-			seperation_samples = 0;
+			if(ch_id == 0)
+			{
+				left_seperation_samples = 0;
+			}
+			else
+			{
+				right_seperation_samples = 0;
+			}
 
 			(*pADC_blanker)->blank_state = BLANKING_COMPLETE;
 			*adc_state = NORMAL_OPERATION;
