@@ -52,12 +52,12 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 							break;
 					}
 
-					(*pADC_blanker) = ch_id == 0? (blank_t*)temp_blnk->d2:(blank_t*)temp_blnk->d3;
+					(*pADC_blanker) = ch_id == 0? (blank_t*)temp_blnk->pLeft_blanker:(blank_t*)temp_blnk->pRight_blanker;
 
 					if(*pADC_blanker == NULL){
 						// create blanker
 						(*pADC_blanker) = (blank_t*) malloc(sizeof(blank_t));
-						(*pADC_blanker)->tks_val = ch_id == 0?(uint16_t)(temp_blnk->d0): (uint16_t)(temp_blnk->d1);
+						(*pADC_blanker)->tks_val = ch_id == 0?(uint16_t)(temp_blnk->left_adc_Val): (uint16_t)(temp_blnk->right_adc_val);
 						(*pADC_blanker)->tks_cnt = mv_cnt;
 						(*pADC_blanker)->cr_cnt = 0;
 						(*pADC_blanker)->blank_state = BLANKING_START;
@@ -72,13 +72,13 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 					{
 						if(ch_id == 0)
 						{
-							temp_blnk->d0 = (*pADC_blanker)->tks_val;
-							temp_blnk->d2 = (size_t)(*pADC_blanker);
+							temp_blnk->left_adc_Val = (*pADC_blanker)->tks_val;
+							temp_blnk->pLeft_blanker = (size_t)(*pADC_blanker);
 						}
 						else
 						{
-							temp_blnk->d1 = (*pADC_blanker)->tks_val;
-							temp_blnk->d3 = (size_t)(*pADC_blanker);
+							temp_blnk->right_adc_val = (*pADC_blanker)->tks_val;
+							temp_blnk->pRight_blanker = (size_t)(*pADC_blanker);
 						}
 
 						temp_blnk = temp_blnk->prev;
@@ -90,7 +90,7 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 				int mv_cnt = 0;
 				struct dq_node_t* temp_blnk = dq_peekFirst((dq_queue_t*)pAudqueue);
 				do{
-					(*pADC_blanker) = ch_id == 0? (blank_t*)temp_blnk->d2:(blank_t*)temp_blnk->d3;
+					(*pADC_blanker) = ch_id == 0? (blank_t*)temp_blnk->pLeft_blanker:(blank_t*)temp_blnk->pRight_blanker;
 					mv_cnt++;
 
 					if(*pADC_blanker != NULL)
@@ -117,13 +117,13 @@ uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 					{
 						if(ch_id == 0)
 						{
-							temp_blnk->d0 = (*pADC_blanker)->tks_val;
-							temp_blnk->d2 = (size_t)(*pADC_blanker);
+							temp_blnk->left_adc_Val = (*pADC_blanker)->tks_val;
+							temp_blnk->pLeft_blanker = (size_t)(*pADC_blanker);
 						}
 						else
 						{
-							temp_blnk->d1 = (*pADC_blanker)->tks_val;
-							temp_blnk->d3 = (size_t)(*pADC_blanker);
+							temp_blnk->right_adc_val = (*pADC_blanker)->tks_val;
+							temp_blnk->pRight_blanker = (size_t)(*pADC_blanker);
 						}
 
 						temp_blnk = temp_blnk->prev;

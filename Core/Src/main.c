@@ -693,13 +693,13 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 	// process adc data
 	struct dq_node_t* audio_node = dq_createNode();
 
-	audio_node->d0 = process_adc_channel(0, left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
-	audio_node->d2 = (size_t)pADC_left_blanker;
+	audio_node->left_adc_Val = process_adc_channel(0, left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
+	audio_node->pLeft_blanker = (size_t)pADC_left_blanker;
 	if(pADC_left_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_left_blanker = NULL;
 
-	audio_node->d1 = process_adc_channel(1, right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
-	audio_node->d3 = (size_t)pADC_right_blanker;
+	audio_node->right_adc_val = process_adc_channel(1, right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
+	audio_node->pRight_blanker = (size_t)pADC_right_blanker;
 	if(pADC_right_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_right_blanker = NULL;
 
@@ -712,8 +712,8 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 		if(temp)
 		{
 
-			if(temp->d2){
-				pDAC_left_blanker = (blank_t*)temp->d2;
+			if(temp->pLeft_blanker){
+				pDAC_left_blanker = (blank_t*)temp->pLeft_blanker;
 				/*
 				if(pDAC_left_blanker->correct_state == CORRECTING_START){
 					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;
@@ -722,8 +722,8 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 
 			}
 
-			if(temp->d3){
-				pDAC_right_blanker = (blank_t*)temp->d3;
+			if(temp->pRight_blanker){
+				pDAC_right_blanker = (blank_t*)temp->pRight_blanker;
 				/*
 				if(pDAC_right_blanker->correct_state == CORRECTING_START){
 					((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin;
@@ -731,8 +731,8 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 				*/
 			}
 
-			tx_buf[0] = process_dac_channel(&left_dac_state, (uint16_t)(temp->d0 & 0xffff), &pDAC_left_blanker);
-			tx_buf[1] = process_dac_channel(&right_dac_state, (uint16_t)(temp->d1 & 0xffff), &pDAC_right_blanker);
+			tx_buf[0] = process_dac_channel(&left_dac_state, (uint16_t)(temp->left_adc_Val & 0xffff), &pDAC_left_blanker);
+			tx_buf[1] = process_dac_channel(&right_dac_state, (uint16_t)(temp->right_adc_val & 0xffff), &pDAC_right_blanker);
 
 			if(pDAC_left_blanker){
 				if(pDAC_left_blanker->correct_state == CORRECTING_COMPLETE)
@@ -764,6 +764,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 			dac_enabled = true;
 			((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // timing end
 		}
+
 	}
 #endif
 
