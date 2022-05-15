@@ -14,7 +14,7 @@ extern "C" {
 
 #define DAC_SEPARATION 1042U		// 10ms 9.6us
 #define  TKS_M0 5U				// pre start samples
-#define  TKE_K 26U				// samples in between ticks that constitute a cluster tick
+#define  TKE_K 0U				// samples in between ticks that constitute a cluster tick
 
 enum enumAlgoState {
 	NORMAL_OPERATION, BLANKING_OPERATION, CORRECTING_OPERATION, BLANKING_START, BLANKING_COMPLETE, CORRECTING_START, CORRECTING_COMPLETE
