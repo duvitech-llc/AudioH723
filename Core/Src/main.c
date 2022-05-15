@@ -167,7 +167,7 @@ int main(void)
   printf("M0: %i\r\n", TKS_M0);
   printf("K: %i\r\n", TKE_K);
   // initialize
-  dq_init(&audio_queue, DAC_SEPARATION + 256U);
+  dq_init(&audio_queue, DAC_SEPARATION + 1);
 
   ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
   ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
@@ -176,11 +176,11 @@ int main(void)
 
   ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;  // timing start
 
-  if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
+  if (HAL_OK != HAL_SAI_Receive_DMA(&hsai_BlockA1, (uint8_t*) rx_buf, 2)) {
 	Error_Handler();
   }
 
-  if (HAL_OK != HAL_SAI_Receive_DMA(&hsai_BlockA1, (uint8_t*) rx_buf, 2)) {
+  if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
 	Error_Handler();
   }
 
@@ -693,12 +693,14 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 	// process adc data
 	struct dq_node_t* audio_node = dq_createNode();
 
-	audio_node->left_adc_Val = process_adc_channel(0, left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
+	audio_node->left_adc_Val = process_left_adc_channel( left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
+
 	audio_node->pLeft_blanker = (size_t)pADC_left_blanker;
 	if(pADC_left_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_left_blanker = NULL;
 
-	audio_node->right_adc_val = process_adc_channel(1, right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
+	//TODO: Turned off right channel while developing
+	audio_node->right_adc_val =  rx_buf[1]; // process_adc_channel(1, right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
 	audio_node->pRight_blanker = (size_t)pADC_right_blanker;
 	if(pADC_right_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_right_blanker = NULL;
@@ -731,8 +733,9 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 				*/
 			}
 
-			tx_buf[0] = process_dac_channel(&left_dac_state, (uint16_t)(temp->left_adc_Val & 0xffff), &pDAC_left_blanker);
-			tx_buf[1] = process_dac_channel(&right_dac_state, (uint16_t)(temp->right_adc_val & 0xffff), &pDAC_right_blanker);
+			//TODO: Pass thru enabled on right channel during testing
+			tx_buf[0] = process_dac_channel(&left_dac_state, temp->left_adc_Val, &pDAC_left_blanker);
+			tx_buf[1] = temp->right_adc_val; // process_dac_channel(&right_dac_state, (uint16_t)(temp->right_adc_val & 0xffff), &pDAC_right_blanker);
 
 			if(pDAC_left_blanker){
 				if(pDAC_left_blanker->correct_state == CORRECTING_COMPLETE)

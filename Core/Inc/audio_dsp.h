@@ -13,7 +13,7 @@ extern "C" {
 #include <stdint.h>
 
 #define DAC_SEPARATION 1042U		// 10ms 9.6us
-#define  TKS_M0 5U				// pre start samples
+#define  TKS_M0 0U				// pre start samples
 #define  TKE_K 0U				// samples in between ticks that constitute a cluster tick
 
 enum enumAlgoState {
@@ -32,7 +32,9 @@ typedef struct {
         enum enumAlgoState correct_state;
     } blank_t;
 
-uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue);
+uint16_t process_left_adc_channel(uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue);
+
+uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue);
 uint16_t process_dac_channel(enum enumAlgoState *dac_state, uint16_t dac_read, blank_t **pDAC_blanker);
 
 #ifdef __cplusplus
