@@ -162,7 +162,7 @@ int main(void)
   tx_buf[1]=0;
 
   printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v1.2\r\n\r\n");
+  printf("AUDIO Processing Demo Shield v1.3\r\n\r\n");
   printf("AUDIO: %lu Hz 16 bits \r\n", hsai_BlockA1.Init.AudioFrequency);
   printf("M0: %i\r\n", TKS_M0);
   printf("K: %i\r\n", TKE_K);
@@ -700,7 +700,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 		pADC_left_blanker = NULL;
 
 	//TODO: Turned off right channel while developing
-	audio_node->right_adc_val =  rx_buf[1]; // process_adc_channel(1, right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
+	audio_node->right_adc_val = process_right_adc_channel( right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
 	audio_node->pRight_blanker = (size_t)pADC_right_blanker;
 	if(pADC_right_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_right_blanker = NULL;
@@ -733,9 +733,8 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 				*/
 			}
 
-			//TODO: Pass thru enabled on right channel during testing
 			tx_buf[0] = process_dac_channel(&left_dac_state, temp->left_adc_Val, &pDAC_left_blanker);
-			tx_buf[1] = temp->right_adc_val; // process_dac_channel(&right_dac_state, (uint16_t)(temp->right_adc_val & 0xffff), &pDAC_right_blanker);
+			tx_buf[1] = process_dac_channel(&right_dac_state, temp->right_adc_val, &pDAC_right_blanker);
 
 			if(pDAC_left_blanker){
 				if(pDAC_left_blanker->correct_state == CORRECTING_COMPLETE)

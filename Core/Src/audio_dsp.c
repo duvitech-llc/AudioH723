@@ -185,7 +185,8 @@ uint16_t process_left_adc_channel(uint32_t blanker_active, uint16_t adc_read, en
 	return adc_value;
 }
 
-uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue)
+
+uint16_t process_right_adc_channel(uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue)
 {
 	uint16_t adc_value = adc_read;
 	uint16_t working_val = 0;
@@ -201,20 +202,9 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 				printf("<<<<<<<<<<<< NORMAL OPERATION CURRENT Blanker POINTER NOT NULL <<<<<<<<<<<< \r\n");
 			}
 
-			if(ch_id == 0)
-			{
-				// printf("TKE: %i CNT: %i\r\n", TKE_K, left_seperation_samples);
-				if(left_seperation_samples < TKE_K){
-					bClusterTick = true;
-				}
-			}
-			else
-			{
-				// printf("TKE: %i CNT: %i\r\n", TKE_K, right_seperation_samples);
-				if(right_seperation_samples < TKE_K){
-					bClusterTick = true;
-				}
-
+			// printf("TKE: %i CNT: %i\r\n", TKE_K, right_seperation_samples);
+			if(right_seperation_samples < TKE_K){
+				bClusterTick = true;
 			}
 
 			// Check M0 and fix up samples
@@ -232,12 +222,12 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 							break;
 					}
 
-					(*pADC_blanker) = ch_id == 0? (blank_t*)temp_blnk->pLeft_blanker:(blank_t*)temp_blnk->pRight_blanker;
+					(*pADC_blanker) = (blank_t*)temp_blnk->pLeft_blanker;
 
 					if(*pADC_blanker == NULL){
 						// create blanker
 						(*pADC_blanker) = (blank_t*) malloc(sizeof(blank_t));
-						(*pADC_blanker)->tks_val = ch_id == 0?(uint16_t)(temp_blnk->left_adc_Val): (uint16_t)(temp_blnk->right_adc_val);
+						(*pADC_blanker)->tks_val = (uint16_t)(temp_blnk->left_adc_Val);
 						(*pADC_blanker)->tks_cnt = mv_cnt;
 						(*pADC_blanker)->cr_cnt = 0;
 						(*pADC_blanker)->blank_state = BLANKING_START;
@@ -250,17 +240,8 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 					// fix up M0 samples
 					while (temp_blnk)
 					{
-						if(ch_id == 0)
-						{
-							temp_blnk->left_adc_Val = (*pADC_blanker)->tks_val;
-							temp_blnk->pLeft_blanker = (size_t)(*pADC_blanker);
-						}
-						else
-						{
-							temp_blnk->right_adc_val = (*pADC_blanker)->tks_val;
-							temp_blnk->pRight_blanker = (size_t)(*pADC_blanker);
-						}
-
+						temp_blnk->left_adc_Val = (*pADC_blanker)->tks_val;
+						temp_blnk->pLeft_blanker = (size_t)(*pADC_blanker);
 						temp_blnk = temp_blnk->prev;
 					}
 
@@ -270,7 +251,7 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 				int mv_cnt = 0;
 				struct dq_node_t* temp_blnk = dq_peekFirst((dq_queue_t*)pAudqueue);
 				do{
-					(*pADC_blanker) = ch_id == 0? (blank_t*)temp_blnk->pLeft_blanker:(blank_t*)temp_blnk->pRight_blanker;
+					(*pADC_blanker) = (blank_t*)temp_blnk->pLeft_blanker;
 					mv_cnt++;
 
 					if(*pADC_blanker != NULL)
@@ -295,17 +276,8 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 					// fix up samples in between
 					while (temp_blnk)
 					{
-						if(ch_id == 0)
-						{
-							temp_blnk->left_adc_Val = (*pADC_blanker)->tks_val;
-							temp_blnk->pLeft_blanker = (size_t)(*pADC_blanker);
-						}
-						else
-						{
-							temp_blnk->right_adc_val = (*pADC_blanker)->tks_val;
-							temp_blnk->pRight_blanker = (size_t)(*pADC_blanker);
-						}
-
+						temp_blnk->left_adc_Val = (*pADC_blanker)->tks_val;
+						temp_blnk->pLeft_blanker = (size_t)(*pADC_blanker);
 						temp_blnk = temp_blnk->prev;
 					}
 
@@ -329,15 +301,7 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 			adc_value = (*pADC_blanker)->tks_val;
 			*adc_state = BLANKING_OPERATION;
 		} else {
-			// do nothing
-			if(ch_id == 0)
-			{
-				left_seperation_samples++;
-			}
-			else
-			{
-				right_seperation_samples++;
-			}
+			right_seperation_samples++;
 		}
 		break;
 	case BLANKING_OPERATION:
@@ -386,14 +350,7 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 
 			//printf("BLANK C: %i M0: %i M1: %i D: %i S: %i\r\n", (*pADC_blanker)->tks_cnt, (*pADC_blanker)->tks_val, (*pADC_blanker)->tke_val, (*pADC_blanker)->tks_dir, (*pADC_blanker)->tks_step);
 
-			if(ch_id == 0)
-			{
-				left_seperation_samples = 0;
-			}
-			else
-			{
-				right_seperation_samples = 0;
-			}
+			right_seperation_samples = 0;
 
 			(*pADC_blanker)->blank_state = BLANKING_COMPLETE;
 			*adc_state = NORMAL_OPERATION;
@@ -408,6 +365,7 @@ uint16_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_re
 	// write adc samples to fifo
 	return adc_value;
 }
+
 
 uint16_t process_dac_channel(enum enumAlgoState *dac_state, uint16_t dac_read, blank_t **pDAC_blanker)
 {
