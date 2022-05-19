@@ -15,6 +15,7 @@ extern "C" {
 #define DAC_SEPARATION 1042U		// 10ms 9.6us
 #define  TKS_M0 5U				// pre start samples
 #define  TKE_K 20U				// samples in between ticks that constitute a cluster tick
+#define  B_DEL 12U				// blanker signal delay in samples
 
 enum enumAlgoState {
 	NORMAL_OPERATION, BLANKING_OPERATION, CORRECTING_OPERATION, BLANKING_START, BLANKING_COMPLETE, CORRECTING_START, CORRECTING_COMPLETE

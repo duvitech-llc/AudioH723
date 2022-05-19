@@ -27,6 +27,7 @@
 #include <math.h>
 
 #include "logging.h"
+#include "fifo_buff.h"
 #include "double_queue.h"
 
 #include "audio_dsp.h"
@@ -70,6 +71,9 @@ ALIGN_32BYTES(uint16_t tx_buf[2]);
 volatile bool dac_enabled;
 
 dq_queue_t audio_queue;
+fifo_t* pLeftBlankDelay;
+fifo_t* pRightBlankDelay;
+volatile bool blanker_enabled;
 
 volatile unsigned int sample_count = 0;
 volatile bool dac_enabled;
@@ -168,6 +172,12 @@ int main(void)
   printf("K: %i\r\n", TKE_K);
   // initialize
   dq_init(&audio_queue, DAC_SEPARATION + 1);
+
+  blanker_enabled = false;
+  pLeftBlankDelay = malloc(sizeof(fifo_t));
+  pRightBlankDelay = malloc(sizeof(fifo_t));
+  fifo_init(pLeftBlankDelay);
+  fifo_init(pRightBlankDelay);
 
   ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
   ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
@@ -665,7 +675,7 @@ void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
 
 void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 
-	((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin; // set pin callback timing signal
+	// ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin; // set pin callback timing signal
 
 #ifdef PASS_THRU_ENABLED
 
@@ -676,8 +686,17 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 	tx_buf[0] = 0;
 	tx_buf[1] = 0;
 	// get blanker state
-	left_blanker_active = (((GPIO_TypeDef*) BLANKER_L_GPIO_Port)->IDR & BLANKER_L_Pin);
-	right_blanker_active = (((GPIO_TypeDef*) BLANKER_R_GPIO_Port)->IDR & BLANKER_R_Pin);
+	fifo_write(pLeftBlankDelay,  (((GPIO_TypeDef*) BLANKER_L_GPIO_Port)->IDR & BLANKER_L_Pin));
+	fifo_write(pRightBlankDelay, (((GPIO_TypeDef*) BLANKER_R_GPIO_Port)->IDR & BLANKER_R_Pin));
+
+	if(blanker_enabled){
+		left_blanker_active = fifo_read(pLeftBlankDelay);
+		right_blanker_active = fifo_read(pRightBlankDelay);
+	}else{
+		if (sample_count >= B_DEL - 1) {
+			blanker_enabled = true;
+		}
+	}
 
 	// set blanker LED
 	if(left_blanker_active>0)
@@ -691,21 +710,20 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 		((GPIO_TypeDef*) LED_R_GPIO_Port)->BSRR = (uint32_t) LED_R_Pin << 16U;
 
 	// process adc data
-	struct dq_node_t* audio_node = dq_createNode();
+	struct dq_node_t* audio_sample = dq_createNode();
 
-	audio_node->left_adc_Val = process_left_adc_channel( left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
+	audio_sample->left_adc_Val = process_left_adc_channel( left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
 
-	audio_node->pLeft_blanker = (size_t)pADC_left_blanker;
+	audio_sample->pLeft_blanker = (size_t)pADC_left_blanker;
 	if(pADC_left_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_left_blanker = NULL;
 
-	//TODO: Turned off right channel while developing
-	audio_node->right_adc_val = process_right_adc_channel( right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
-	audio_node->pRight_blanker = (size_t)pADC_right_blanker;
+	audio_sample->right_adc_val = process_right_adc_channel( right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
+	audio_sample->pRight_blanker = (size_t)pADC_right_blanker;
 	if(pADC_right_blanker->blank_state == BLANKING_COMPLETE)
 		pADC_right_blanker = NULL;
 
-	dq_insertFirst(&audio_queue, audio_node);
+	dq_insertFirst(&audio_queue, audio_sample);
 
 	// if dac enabled process output data
 	if (dac_enabled) {
@@ -716,11 +734,9 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 
 			if(temp->pLeft_blanker){
 				pDAC_left_blanker = (blank_t*)temp->pLeft_blanker;
-				/*
 				if(pDAC_left_blanker->correct_state == CORRECTING_START){
 					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;
 				}
-				*/
 
 			}
 
@@ -742,7 +758,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 					free(pDAC_left_blanker);
 					pDAC_left_blanker = NULL;
 					// reset led
-					//((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U;
+					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U;
 				}
 			}
 
@@ -772,7 +788,7 @@ void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
 
 	sample_count++;
 
-	((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
+	// ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
 
 }
 
