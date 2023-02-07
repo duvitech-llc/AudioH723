@@ -13,8 +13,8 @@ extern "C" {
 #include <stdint.h>
 
     struct dq_node_t {
-        size_t left_adc_Val;
-        size_t right_adc_val;
+    	uint16_t left_adc_val;
+    	uint16_t right_adc_val;
         size_t pLeft_blanker;
         size_t pRight_blanker;
         struct dq_node_t* next;

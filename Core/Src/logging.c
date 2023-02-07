@@ -28,12 +28,12 @@ int _write(int fd, const void *buf, size_t count){
 		char *msg = (char*) malloc(count);
 		memcpy(msg, buf, count);
 		struct dq_node_t* msg_node = dq_createNode();
-		msg_node->left_adc_Val = (uint32_t)msg;
-		msg_node->right_adc_val = count;
+		msg_node->pLeft_blanker = (uint32_t)msg;
+		msg_node->pRight_blanker = count;
 		dq_insertLast(&logging_queue, msg_node);
 	}else{
 		uint8_t * src = (uint8_t *)buf;
-		HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit(&huart3, src, count, 5);
+		HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit(&huart3, src, count, 10);
 		if(com_tx_status != HAL_OK)
 		{
 			Error_Handler();
@@ -71,14 +71,14 @@ void processUartTxData(){
 		struct dq_node_t* temp = dq_deleteFirst(&logging_queue);
 		if(temp != NULL){
 			bPrintfTransferComplete = false;
-			memcpy(tx_buffer,(uint8_t*)temp->left_adc_Val, temp->right_adc_val);
-			uint16_t size = (uint16_t)temp->right_adc_val;
+			memcpy(tx_buffer,(uint8_t*)temp->pLeft_blanker, temp->pRight_blanker);
+			uint16_t size = (uint16_t)temp->pRight_blanker;
 			HAL_StatusTypeDef com_tx_status = HAL_UART_Transmit_DMA(&huart3, tx_buffer, size);
 			if(com_tx_status != HAL_OK)
 			{
 				Error_Handler();
 			}
-			free((uint8_t*)temp->left_adc_Val);
+			free((uint8_t*)temp->pLeft_blanker);
 			free(temp);
 		}
 	}
