@@ -1,42 +1,47 @@
-#pragma once
-#ifndef __AUDIO_DSP_H_
-#define __AUDIO_DSP_H_
+#ifndef AUDIO_DSP_H
+#define AUDIO_DSP_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// Include necessary libraries and header files
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-#define DAC_SEPARATION 1042U		// 10ms 9.6us
+// Define your signal processing functions, buffers, and any necessary data structures
+
+// Define the sample rate and bit depth
+#define AUDIO_SAMPLE_RATE 96000
+#define AUDIO_BIT_DEPTH 16
+
+// Define a macro to enable or disable the passthrough
+// #define AUDIO_DSP_PASSTHROUGH_ENABLED 1  // Set to 1 to enable, 0 to disable
+// Define the buffer duration in milliseconds max is 50ms
+#define DAC_SEPARATION_MS 10
 #define  TKS_M0 5U				// pre start samples
-#define  TKE_K 26U				// samples in between ticks that constitute a cluster tick
+#define  TKE_K 20U				// samples in between blanker pulses that constitute a cluster correction
+#define  B_DEL 12U				// blanker signal delay in samples
+
+#define DAC_SEPARATION ((AUDIO_SAMPLE_RATE / 1000) * DAC_SEPARATION_MS)
 
 enum enumAlgoState {
-	NORMAL_OPERATION, BLANKING_OPERATION, CORRECTING_OPERATION, BLANKING_START, BLANKING_COMPLETE, CORRECTING_START, CORRECTING_COMPLETE
+	NORMAL_OPERATION, BLANKING_OPERATION, CORRECTING_OPERATION, BLANKING_START, BLANKING_COMPLETE, CORRECTING_START, CORRECTING_COMPLETE, BLANKER_UNUSED
 };
 
-typedef struct {
-        uint16_t tks_step;
-        int16_t tks_val;
-        int16_t tke_val;
-        uint16_t tks_cnt;
-        uint16_t tks_dir;
-        uint16_t cr_cnt;
-        int16_t unused;
-        enum enumAlgoState blank_state;
-        enum enumAlgoState correct_state;
-    } blank_t;
+enum enumSampleState {
+	SAMPLE_VALID, SAMPLE_ERROR, SAMPLE_UNUSED
+};
 
-uint32_t process_adc_channel(int ch_id, uint32_t blanker_active, uint16_t adc_read, enum enumAlgoState *adc_state, blank_t **pADC_blanker, void* pAudqueue);
-uint16_t process_dac_channel(enum enumAlgoState *dac_state, uint16_t dac_read, blank_t **pDAC_blanker);
+void audio_dsp_init();
+void enable_dac();
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif // __AUDIO_DSP_H_
+

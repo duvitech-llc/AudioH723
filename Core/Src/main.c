@@ -27,11 +27,10 @@
 #include <math.h>
 
 #include "logging.h"
-#include "double_queue.h"
 
 #include "audio_dsp.h"
 
-//#define PASS_THRU_ENABLED
+// #define PASS_THRU_ENABLED
 
 /* USER CODE END Includes */
 
@@ -57,35 +56,19 @@ DMA_HandleTypeDef hdma_sai1_a;
 DMA_HandleTypeDef hdma_sai1_b;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim16;
+TIM_HandleTypeDef htim23;
 
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
 
-ALIGN_32BYTES(uint16_t rx_buf[2]);
-ALIGN_32BYTES(uint16_t tx_buf[2]);
+ALIGN_32BYTES(uint16_t rx_buf[4]);
+ALIGN_32BYTES(uint16_t tx_buf[4]);
 
-volatile bool dac_enabled;
-
-dq_queue_t audio_queue;
-
-volatile unsigned int sample_count = 0;
-volatile bool dac_enabled;
-
-uint32_t left_blanker_active = 0;
-uint32_t right_blanker_active = 0;
-
-enum enumAlgoState left_adc_state = NORMAL_OPERATION;
-enum enumAlgoState right_adc_state = NORMAL_OPERATION;
-enum enumAlgoState left_dac_state = NORMAL_OPERATION;
-enum enumAlgoState right_dac_state = NORMAL_OPERATION;
-
-blank_t *pADC_left_blanker = NULL;
-blank_t *pADC_right_blanker = NULL;
-blank_t *pDAC_left_blanker = NULL;
-blank_t *pDAC_right_blanker = NULL;
+volatile uint32_t processing_time_us;
 
 /* USER CODE END PV */
 
@@ -100,6 +83,8 @@ static void MX_USART3_UART_Init(void);
 static void MX_SAI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM16_Init(void);
+static void MX_TIM23_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -119,16 +104,13 @@ int main(void)
 
   /* USER CODE END 1 */
 
-  /* MPU Configuration--------------------------------------------------------*/
-  MPU_Config();
-
-  /* Enable I-Cache---------------------------------------------------------*/
-  SCB_EnableICache();
-
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
+
+  /* MPU Configuration--------------------------------------------------------*/
+  MPU_Config();
 
   /* USER CODE BEGIN Init */
 
@@ -152,39 +134,49 @@ int main(void)
   MX_SAI1_Init();
   MX_TIM1_Init();
   MX_TIM16_Init();
+  MX_TIM23_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
 
   // init_dma_logging();
 
   rx_buf[0]=0;
   rx_buf[1]=0;
+  rx_buf[2]=0;
+  rx_buf[3]=0;
   tx_buf[0]=0;
   tx_buf[1]=0;
+  tx_buf[2]=0;
+  tx_buf[3]=0;
 
-  printf("DUVITECH Copyright 2022\r\n");
-  printf("AUDIO Processing Demo Shield v1.2\r\n\r\n");
+  printf("\r\nDUVITECH Copyright 2023\r\n");
+  printf("AUDIO Processing Demo Shield v2.0\r\n\r\n");
   printf("AUDIO: %lu Hz 16 bits \r\n", hsai_BlockA1.Init.AudioFrequency);
-  printf("M0: %i\r\n", TKS_M0);
-  printf("K: %i\r\n", TKE_K);
+  //printf("M0: %i\r\n", TKS_M0);
+  //printf("K: %i\r\n", TKE_K);
+
   // initialize
-  dq_init(&audio_queue, DAC_SEPARATION + 256U);
+  processing_time_us = 0;
 
   ((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
   ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // reset pin
-
+  ((GPIO_TypeDef*) sample_timing_GPIO_Port)->BSRR = (uint32_t) sample_timing_Pin << 16U; // reset pin
+  audio_dsp_init();
   HAL_Delay(200);
 
-  ((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;  // timing start
+  ((GPIO_TypeDef*) sample_timing_GPIO_Port)->BSRR = sample_timing_Pin;  // timing start
 
-  if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 2)) {
+
+  if (HAL_OK != HAL_SAI_Transmit_DMA(&hsai_BlockB1, (uint8_t*) tx_buf, 4)) {
 	Error_Handler();
   }
 
-  if (HAL_OK != HAL_SAI_Receive_DMA(&hsai_BlockA1, (uint8_t*) rx_buf, 2)) {
+  if (HAL_OK != HAL_SAI_Receive_DMA(&hsai_BlockA1, (uint8_t*) rx_buf, 4)) {
 	Error_Handler();
   }
 
-  // HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  //HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  // HAL_TIM_Base_Start_IT(&htim5);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -194,6 +186,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    // Print the processing time every few seconds
+	// printf("Processing Time: %ld uSec\r\n", processing_time_us);
+	// Delay for a few seconds (adjust as needed)
+	HAL_Delay(2000); // Delay for 2 seconds
+
 	//  processUartTxData();
   }
   /* USER CODE END 3 */
@@ -218,26 +215,23 @@ void SystemClock_Config(void)
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
-  /** Macro to configure the PLL clock source
-  */
-  __HAL_RCC_PLL_PLLSOURCE_CONFIG(RCC_PLLSOURCE_HSE);
-
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
+  RCC_OscInitStruct.HSICalibrationValue = 64;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 275;
+  RCC_OscInitStruct.PLL.PLLN = 34;
   RCC_OscInitStruct.PLL.PLLP = 1;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_1;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
-  RCC_OscInitStruct.PLL.PLLFRACN = 0;
+  RCC_OscInitStruct.PLL.PLLFRACN = 3072;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -273,8 +267,8 @@ void PeriphCommonClock_Config(void)
   /** Initializes the peripherals clock
   */
   PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SAI1;
-  PeriphClkInitStruct.PLL2.PLL2M = 1;
-  PeriphClkInitStruct.PLL2.PLL2N = 40;
+  PeriphClkInitStruct.PLL2.PLL2M = 4;
+  PeriphClkInitStruct.PLL2.PLL2N = 12;
   PeriphClkInitStruct.PLL2.PLL2P = 2;
   PeriphClkInitStruct.PLL2.PLL2Q = 2;
   PeriphClkInitStruct.PLL2.PLL2R = 2;
@@ -350,17 +344,15 @@ static void MX_TIM1_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
   /* USER CODE BEGIN TIM1_Init 1 */
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 6875;
+  htim1.Init.Prescaler = 274;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 99;
-  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV2;
+  htim1.Init.Period = 9;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
@@ -372,7 +364,7 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  if (HAL_TIM_OnePulse_Init(&htim1, TIM_OPMODE_SINGLE) != HAL_OK)
   {
     Error_Handler();
   }
@@ -383,36 +375,54 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 10;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
-  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
-  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
-  sBreakDeadTimeConfig.Break2Filter = 0;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 274;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 9;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
 
 }
 
@@ -445,6 +455,55 @@ static void MX_TIM16_Init(void)
   /* USER CODE BEGIN TIM16_Init 2 */
 
   /* USER CODE END TIM16_Init 2 */
+
+}
+
+/**
+  * @brief TIM23 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM23_Init(void)
+{
+
+  /* USER CODE BEGIN TIM23_Init 0 */
+
+  /* USER CODE END TIM23_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM23_Init 1 */
+
+  /* USER CODE END TIM23_Init 1 */
+  htim23.Instance = TIM23;
+  htim23.Init.Prescaler = 0;
+  htim23.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim23.Init.Period = 2749;
+  htim23.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim23.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim23) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim23, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OnePulse_Init(&htim23, TIM_OPMODE_SINGLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim23, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM23_Init 2 */
+
+  /* USER CODE END TIM23_Init 2 */
 
 }
 
@@ -548,6 +607,8 @@ static void MX_DMA_Init(void)
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
+/* USER CODE BEGIN MX_GPIO_Init_1 */
+/* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOE_CLK_ENABLE();
@@ -577,7 +638,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = LED_GREEN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(LED_GREEN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : CORRECT_R_Pin CORRECT_L_Pin */
@@ -593,18 +654,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ERR_LED_Pin */
-  GPIO_InitStruct.Pin = ERR_LED_Pin;
+  /*Configure GPIO pins : ERR_LED_Pin sample_timing_Pin */
+  GPIO_InitStruct.Pin = ERR_LED_Pin|sample_timing_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(ERR_LED_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : USB_FS_PWR_EN_Pin */
   GPIO_InitStruct.Pin = USB_FS_PWR_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(USB_FS_PWR_EN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED_L_Pin LED_R_Pin */
@@ -634,21 +695,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF10_OTG1_HS;
   HAL_GPIO_Init(USB_FS_ID_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PG14 */
-  GPIO_InitStruct.Pin = GPIO_PIN_14;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF13_TIM23;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : sample_timing_Pin */
-  GPIO_InitStruct.Pin = sample_timing_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(sample_timing_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : LED_YELLOW_Pin */
   GPIO_InitStruct.Pin = LED_YELLOW_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -656,123 +702,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_YELLOW_GPIO_Port, &GPIO_InitStruct);
 
+/* USER CODE BEGIN MX_GPIO_Init_2 */
+/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_SAI_RxHalfCpltCallback(SAI_HandleTypeDef *hsai) {
-
-}
-
-void HAL_SAI_RxCpltCallback(SAI_HandleTypeDef *hsai) {
-
-	((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin; // set pin callback timing signal
-
-#ifdef PASS_THRU_ENABLED
-
-	tx_buf[0] = rx_buf[0];
-	tx_buf[1] = rx_buf[1];
-
-#else
-	tx_buf[0] = 0;
-	tx_buf[1] = 0;
-	// get blanker state
-	left_blanker_active = (((GPIO_TypeDef*) BLANKER_L_GPIO_Port)->IDR & BLANKER_L_Pin);
-	right_blanker_active = (((GPIO_TypeDef*) BLANKER_R_GPIO_Port)->IDR & BLANKER_R_Pin);
-
-	// set blanker LED
-	if(left_blanker_active>0)
-		((GPIO_TypeDef*) LED_L_GPIO_Port)->BSRR = LED_L_Pin;
-	else
-		((GPIO_TypeDef*) LED_L_GPIO_Port)->BSRR = (uint32_t) LED_L_Pin << 16U;
-
-	if(right_blanker_active>0)
-		((GPIO_TypeDef*) LED_R_GPIO_Port)->BSRR = LED_R_Pin;
-	else
-		((GPIO_TypeDef*) LED_R_GPIO_Port)->BSRR = (uint32_t) LED_R_Pin << 16U;
-
-	// process adc data
-	struct dq_node_t* audio_node = dq_createNode();
-
-	audio_node->left_adc_Val = process_adc_channel(0, left_blanker_active, rx_buf[0], &left_adc_state, &pADC_left_blanker, &audio_queue);
-	audio_node->pLeft_blanker = (size_t)pADC_left_blanker;
-	if(pADC_left_blanker->blank_state == BLANKING_COMPLETE)
-		pADC_left_blanker = NULL;
-
-	audio_node->right_adc_val = process_adc_channel(1, right_blanker_active, rx_buf[1], &right_adc_state, &pADC_right_blanker, &audio_queue);
-	audio_node->pRight_blanker = (size_t)pADC_right_blanker;
-	if(pADC_right_blanker->blank_state == BLANKING_COMPLETE)
-		pADC_right_blanker = NULL;
-
-	dq_insertFirst(&audio_queue, audio_node);
-
-	// if dac enabled process output data
-	if (dac_enabled) {
-		struct dq_node_t* temp = dq_deleteLast(&audio_queue);
-
-		if(temp)
-		{
-
-			if(temp->pLeft_blanker){
-				pDAC_left_blanker = (blank_t*)temp->pLeft_blanker;
-				/*
-				if(pDAC_left_blanker->correct_state == CORRECTING_START){
-					((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = CORRECT_L_Pin;
-				}
-				*/
-
-			}
-
-			if(temp->pRight_blanker){
-				pDAC_right_blanker = (blank_t*)temp->pRight_blanker;
-				/*
-				if(pDAC_right_blanker->correct_state == CORRECTING_START){
-					((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = CORRECT_R_Pin;
-				}
-				*/
-			}
-
-			tx_buf[0] = process_dac_channel(&left_dac_state, (uint16_t)(temp->left_adc_Val & 0xffff), &pDAC_left_blanker);
-			tx_buf[1] = process_dac_channel(&right_dac_state, (uint16_t)(temp->right_adc_val & 0xffff), &pDAC_right_blanker);
-
-			if(pDAC_left_blanker){
-				if(pDAC_left_blanker->correct_state == CORRECTING_COMPLETE)
-				{
-					free(pDAC_left_blanker);
-					pDAC_left_blanker = NULL;
-					// reset led
-					//((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U;
-				}
-			}
-
-			if(pDAC_right_blanker){
-				if(pDAC_right_blanker->correct_state == CORRECTING_COMPLETE)
-				{
-					free(pDAC_right_blanker);
-					pDAC_right_blanker = NULL;
-					// reset led
-					//((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U;
-				}
-			}
-
-			free(temp);
-		}
-
-	}else{
-		tx_buf[0] = 0;
-		tx_buf[1] = 0;
-		if (sample_count >= DAC_SEPARATION - 1) {
-			dac_enabled = true;
-			((GPIO_TypeDef*) CORRECT_L_GPIO_Port)->BSRR = (uint32_t) CORRECT_L_Pin << 16U; // timing end
-		}
-
-	}
-#endif
-
-	sample_count++;
-
-	((GPIO_TypeDef*) CORRECT_R_GPIO_Port)->BSRR = (uint32_t) CORRECT_R_Pin << 16U; // reset pin
-
-}
 
 /* USER CODE END 4 */
 
@@ -790,7 +724,7 @@ void MPU_Config(void)
   MPU_InitStruct.Enable = MPU_REGION_ENABLE;
   MPU_InitStruct.Number = MPU_REGION_NUMBER0;
   MPU_InitStruct.BaseAddress = 0x0;
-  MPU_InitStruct.Size = MPU_REGION_SIZE_4GB;
+  MPU_InitStruct.Size = MPU_REGION_SIZE_1GB;
   MPU_InitStruct.SubRegionDisable = 0x87;
   MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
   MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
@@ -822,7 +756,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-
+  //if (htim->Instance == TIM5) {
+//	  enable_dac();
+ // }
   /* USER CODE END Callback 1 */
 }
 

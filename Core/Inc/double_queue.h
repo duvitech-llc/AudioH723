@@ -12,11 +12,12 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
+#define MAX_NODE_POOL_SIZE 3000
+
+
     struct dq_node_t {
-        size_t left_adc_Val;
-        size_t right_adc_val;
-        size_t pLeft_blanker;
-        size_t pRight_blanker;
+    	uint16_t left_adc_val;
+    	uint16_t right_adc_val;
         struct dq_node_t* next;
         struct dq_node_t* prev;
     };
@@ -33,6 +34,7 @@ extern "C" {
     bool dq_isEmpty(dq_queue_t* pQueue);
     int dq_length(dq_queue_t* pQueue);
     struct dq_node_t* dq_createNode();
+    void dq_deleteNode(struct dq_node_t* node);
     void dq_insertFirst(dq_queue_t* pQueue, struct dq_node_t* node);
     void dq_insertLast(dq_queue_t* pQueue, struct dq_node_t* node);
     struct dq_node_t* dq_peekFirst(dq_queue_t* pQueue);

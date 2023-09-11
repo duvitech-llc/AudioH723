@@ -1,5 +1,11 @@
 #include "double_queue.h"
 
+struct dq_node_t node_pool[MAX_NODE_POOL_SIZE];
+struct dq_node_t *ptr_pool[MAX_NODE_POOL_SIZE];
+static int pool_top = -1;
+static struct dq_node_t * _pool_pop();
+static void _pool_push(struct dq_node_t *ele);
+
 void dq_init(dq_queue_t* pQueue, int max_size)
 {
 	pQueue->current = NULL;
@@ -7,6 +13,50 @@ void dq_init(dq_queue_t* pQueue, int max_size)
 	pQueue->head = NULL;
 	pQueue->count = 0;
 	pQueue->max = max_size;
+
+	for(int i = 0; i<MAX_NODE_POOL_SIZE; i++ )
+	{
+		node_pool[i].left_adc_val = 0;
+		node_pool[i].right_adc_val = 0;
+		node_pool[i].next = 0;
+		node_pool[i].prev = 0;
+		ptr_pool[i] = &node_pool[i];
+	}
+	pool_top = MAX_NODE_POOL_SIZE - 1;
+}
+
+static struct dq_node_t * _pool_pop()
+{
+	struct dq_node_t * ele = NULL;
+    if (pool_top == -1)
+    {
+        printf("Underflow!!\r\n");
+    }
+    else
+    {
+    	ele = ptr_pool[pool_top];
+    	ptr_pool[pool_top] = NULL;
+    	pool_top = pool_top - 1;
+    }
+
+    return ele;
+}
+
+static void _pool_push(struct dq_node_t *ele)
+{
+	if (pool_top == MAX_NODE_POOL_SIZE - 1)
+    {
+        printf("Overflow!!\r\n");
+    }
+    else
+    {
+    	ele->left_adc_val = 0;
+    	ele->right_adc_val = 0;
+    	ele->next = 0;
+    	ele->prev = 0;
+    	pool_top = pool_top + 1;
+        ptr_pool[pool_top] = ele;
+    }
 }
 
 //is list empty
@@ -21,9 +71,13 @@ int dq_length(dq_queue_t* pQueue) {
 
 struct dq_node_t* dq_createNode()
 {
-	struct dq_node_t* node = (struct dq_node_t*)malloc(sizeof(struct dq_node_t));
+	struct dq_node_t* node = _pool_pop();
 	return node;
+}
 
+void dq_deleteNode(struct dq_node_t* node)
+{
+	_pool_push(node);
 }
 
 void dq_insertFirst(dq_queue_t* pQueue, struct dq_node_t* node)
